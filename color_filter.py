@@ -1,5 +1,7 @@
+import os
 import cv2
 import time
+import glob
 import _thread
 import numpy as np
 import tkinter as tk
@@ -12,6 +14,8 @@ class ColorFilter:
     def __init__(self) -> None:
         # images path
         self.images_path = './data/from_phone_original/'
+        # Gausian blurr kernel size
+        self.blurr = (55, 55)
         # initial hue boundaries
         self.hue_lower = 0
         self.hue_upper = 180
@@ -22,7 +26,7 @@ class ColorFilter:
         self.value_lower = 0
         self.value_upper = 100
         # images
-        self.img = cv2.imread(self.images_path + '0001.jpeg')
+        self.img = cv2.imread(self.images_path + '0020.jpeg')
         self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
         self.img_hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
         h, w, c = self.img.shape
@@ -37,6 +41,7 @@ class ColorFilter:
         self.image_hsv_widget()
         self.mask_widget()
         self.result_widget()
+        # self.image_list_widget()
 
     def run(self):
         self.root.mainloop()
@@ -45,12 +50,17 @@ class ColorFilter:
         # find mask based on boundaries value
         lower_boundaries = np.array([self.hue_lower, self.saturation_lower, self.value_lower])
         upper_boundaries = np.array([self.hue_upper, self.saturation_upper, self.value_upper])
+        # blurring image --> filter shape depends on image shape
+        blurred = cv2.GaussianBlur(self.img_hsv, self.blurr, 0)  # TODO: put in config
         # extract only black color
-        mask = cv2.inRange(self.img_hsv, lower_boundaries, upper_boundaries)
-        result = cv2.bitwise_and(self.img_hsv, self.img_hsv, mask = mask)
+        mask = cv2.inRange(blurred, lower_boundaries, upper_boundaries)
+        result = cv2.bitwise_and(self.img, self.img, mask = mask)
         # change result to BGR so we can see it better
         result = cv2.cvtColor(result, cv2.COLOR_HSV2BGR)        
         
+        # find contours
+        contours, hull_list = self.find_contours(mask, result)
+
         print(lower_boundaries)
         print(upper_boundaries)
         # save mask and result to class instance variables
@@ -66,7 +76,16 @@ class ColorFilter:
         self.label_result.configure(image=self.result_tk)
         self.label_result.image = self.result_tk
         
-        
+    def find_contours(self, mask, result):
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        hull_list = []
+        for i in range(len(contours)):
+            hull = cv2.convexHull(contours[i])
+            hull_list.append(hull)
+            cv2.drawContours(result, contours, i, (255, 0, 0), 5)    
+            cv2.drawContours(result, hull_list, i, (0, 255, 0), 5)
+        return contours, hull_list
+
     def init_gui(self):
         self.root.geometry("800x800")
         self.root.title("HUE/SATURATION/VALUE SLIDE")
@@ -135,6 +154,20 @@ class ColorFilter:
         self.label_result = tk.Label(frame, image = self.result_tk)
         self.label_result.pack()
     
+    def showimg(self):
+        pass
+    
+    def image_list_widget(self):
+        # TODO
+        lst = tk.Listbox(self.root)
+        lst.pack()
+        lst.place(x=0, y=0)
+        img_names = sorted(os.listdir(self.images_path))
+        namelist = [os.path.join(self.images_path, img_name) for img_name in img_names]
+        for fname in namelist:
+            lst.insert(tk.END, fname)
+        lst.bind("<<ListboxSelect>>", self.showimg)
+        
     def set_hue_callback(self, data):
         self.hue_lower = int(data[0])
         self.hue_upper = int(data[1])
