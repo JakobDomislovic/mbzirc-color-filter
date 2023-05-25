@@ -41,7 +41,7 @@ class ColorFilter:
         self.image_hsv_widget()
         self.mask_widget()
         self.result_widget()
-        # self.image_list_widget()
+        self.image_list_widget()
 
     def run(self):
         self.root.mainloop()
@@ -159,14 +159,23 @@ class ColorFilter:
     
     def image_list_widget(self):
         # TODO
-        lst = tk.Listbox(self.root)
+        frame = tk.Frame(self.root, width=40, height=200)
+        frame.pack()
+        frame.place(x=0, y=0)
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side='right', fill='y') 
+        
+        lst = tk.Listbox(frame)
         lst.pack()
-        lst.place(x=0, y=0)
         img_names = sorted(os.listdir(self.images_path))
         namelist = [os.path.join(self.images_path, img_name) for img_name in img_names]
-        for fname in namelist:
+        for fname in img_names:
             lst.insert(tk.END, fname)
-        lst.bind("<<ListboxSelect>>", self.showimg)
+        #lst.bind("<<ListboxSelect>>", self.showimg)
+        
+        # list and scrollbar interaction
+        lst.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=lst.yview)
         
     def set_hue_callback(self, data):
         self.hue_lower = int(data[0])
