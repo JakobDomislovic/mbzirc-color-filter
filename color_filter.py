@@ -14,6 +14,8 @@ class ColorFilter:
     def __init__(self) -> None:
         # images path
         self.images_path = './data/from_phone_original/'
+        self.image_names = sorted(os.listdir(self.images_path))
+        self.images = [os.path.join(self.images_path, img_name) for img_name in self.image_names]
         # Gausian blurr kernel size
         self.blurr = (55, 55)
         # initial hue boundaries
@@ -26,7 +28,7 @@ class ColorFilter:
         self.value_lower = 0
         self.value_upper = 100
         # images
-        self.img = cv2.imread(self.images_path + '0020.jpeg')
+        self.img = cv2.imread(self.images[0])
         self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
         self.img_hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
         h, w, c = self.img.shape
@@ -118,8 +120,8 @@ class ColorFilter:
         self.img_tk = ImageTk.PhotoImage(Image.fromarray(resized))
         
         ## Create a Label Widget to display the text or Image
-        label = tk.Label(frame, image = self.img_tk)
-        label.pack()
+        self.label_img = tk.Label(frame, image = self.img_tk)
+        self.label_img.pack()
 
     def image_hsv_widget(self):
         frame = tk.Frame(self.root, width=250, height=250)
@@ -129,8 +131,8 @@ class ColorFilter:
         resized = cv2.resize(self.img_hsv, (250,250), interpolation = cv2.INTER_AREA)        # tkinter images
         self.img_hsv_tk = ImageTk.PhotoImage(Image.fromarray(resized))
         ## Create a Label Widget to display the text or Image
-        label = tk.Label(frame, image = self.img_hsv_tk)
-        label.pack()
+        self.label_img_hsv = tk.Label(frame, image = self.img_hsv_tk)
+        self.label_img_hsv.pack()
     
     def mask_widget(self):
         frame = tk.Frame(self.root, width=250, height=250)
@@ -154,28 +156,42 @@ class ColorFilter:
         self.label_result = tk.Label(frame, image = self.result_tk)
         self.label_result.pack()
     
-    def showimg(self):
-        pass
+    def load_new_image(self, x):
+        img = self.images[self.lst.curselection()[0]]
+        self.img = cv2.imread(img)
+        self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
+        self.img_hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
+        
+        resized = cv2.resize(self.img, (250,250), interpolation = cv2.INTER_AREA)        # tkinter images
+        self.img_tk = ImageTk.PhotoImage(Image.fromarray(resized))
+        resized = cv2.resize(self.img_hsv, (250,250), interpolation = cv2.INTER_AREA)        # tkinter images
+        self.img_hsv_tk = ImageTk.PhotoImage(Image.fromarray(resized))
+
+        self.label_img.configure(image=self.img_tk)
+        self.label_img.image = self.img_tk
+        
+        self.label_img_hsv.configure(image=self.img_hsv_tk)
+        self.label_img_hsv.image = self.img_hsv_tk
+        # in the end call filter() method
+        self.filter()
     
     def image_list_widget(self):
-        # TODO
+        # images scrollbar and listbox
         frame = tk.Frame(self.root, width=40, height=200)
         frame.pack()
         frame.place(x=0, y=0)
         scrollbar = tk.Scrollbar(frame)
         scrollbar.pack(side='right', fill='y') 
         
-        lst = tk.Listbox(frame)
-        lst.pack()
-        img_names = sorted(os.listdir(self.images_path))
-        namelist = [os.path.join(self.images_path, img_name) for img_name in img_names]
-        for fname in img_names:
-            lst.insert(tk.END, fname)
-        #lst.bind("<<ListboxSelect>>", self.showimg)
+        self.lst = tk.Listbox(frame)
+        self.lst.pack()
+        for fname in self.image_names:
+            self.lst.insert(tk.END, fname)
+        self.lst.bind("<<ListboxSelect>>", self.load_new_image)
         
         # list and scrollbar interaction
-        lst.config(yscrollcommand=scrollbar.set)
-        scrollbar.config(command=lst.yview)
+        self.lst.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=self.lst.yview)
         
     def set_hue_callback(self, data):
         self.hue_lower = int(data[0])

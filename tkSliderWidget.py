@@ -13,7 +13,7 @@ class Slider(Frame):
     LINE_WIDTH = 3
     BAR_COLOR_INNER = "#5c8a8a"
     BAR_COLOR_OUTTER = "#c2d6d6"
-    BAR_RADIUS = 10
+    BAR_RADIUS = 15
     BAR_RADIUS_INNER = BAR_RADIUS - 5
     DIGIT_PRECISION = "1.0f"  # for showing in the canvas
 
