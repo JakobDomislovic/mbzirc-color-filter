@@ -1,4 +1,5 @@
 import os
+import argparse
 import cv2
 import time
 import glob
@@ -11,7 +12,7 @@ import matplotlib.pyplot as plt
   
 class ColorFilter:
 
-    def __init__(self) -> None:
+    def __init__(self, video=False) -> None:
         # images path
         self.images_path = './data/from_phone_original/'
         self.image_names = sorted(os.listdir(self.images_path))
@@ -43,10 +44,40 @@ class ColorFilter:
         self.image_hsv_widget()
         self.mask_widget()
         self.result_widget()
-        self.image_list_widget()
+        
+        self.video = video
+        if self.video:
+            self.cap = cv2.VideoCapture('/dev/video2')
+            # Check if the webcam is opened correctly
+            if not self.cap.isOpened():
+                raise IOError("Cannot open webcam")
+
+        else:
+            self.image_list_widget()
 
     def run(self):
-        self.root.mainloop()
+        if not self.video:
+            self.root.mainloop()
+        else:
+            while True:
+                self.root.update_idletasks()
+                self.root.update()
+                ret, frame = self.cap.read()
+                self.img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                self.img_hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
+
+                resized = cv2.resize(self.img, (250,250), interpolation = cv2.INTER_AREA)        # tkinter images
+                self.img_tk = ImageTk.PhotoImage(Image.fromarray(resized))
+                resized = cv2.resize(self.img_hsv, (250,250), interpolation = cv2.INTER_AREA)        # tkinter images
+                self.img_hsv_tk = ImageTk.PhotoImage(Image.fromarray(resized))
+
+                self.label_img.configure(image=self.img_tk)
+                self.label_img.image = self.img_tk
+
+                self.label_img_hsv.configure(image=self.img_hsv_tk)
+                self.label_img_hsv.image = self.img_hsv_tk
+
+                self.filter()
 
     def filter(self):
         # find mask based on boundaries value
@@ -61,7 +92,13 @@ class ColorFilter:
         result = cv2.cvtColor(result, cv2.COLOR_HSV2BGR)        
         
         # find contours
-        contours, hull_list = self.find_contours(mask, result)
+        contours, hierarchy, hull_list = self.find_contours(mask, result)
+        # find two biggest contours    
+        if len(contours) > 0:
+            two_biggest_contours = self.select_two_biggest_contours(hull_list, hierarchy[0])
+            # draw contours
+            for contour in two_biggest_contours:
+                cv2.drawContours(result, hull_list, contour, (0, 255, 0), 5)
 
         print(lower_boundaries)
         print(upper_boundaries)
@@ -79,18 +116,35 @@ class ColorFilter:
         self.label_result.image = self.result_tk
         
     def find_contours(self, mask, result):
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)  # RETR_EXTERNAL finds only external contours
         hull_list = []
         for i in range(len(contours)):
             hull = cv2.convexHull(contours[i])
             hull_list.append(hull)
-            cv2.drawContours(result, contours, i, (255, 0, 0), 5)    
-            cv2.drawContours(result, hull_list, i, (0, 255, 0), 5)
-        return contours, hull_list
+            #cv2.drawContours(result, contours, i, (255, 0, 0), 5)    
+            #cv2.drawContours(result, hull_list, i, (0, 255, 0), 5)
+        return contours, hierarchy, hull_list
+
+    def select_two_biggest_contours(self, hull_list, hierarchy):
+        # calculate area
+        cont_area = []
+        for i in range(len(hull_list)):
+            area = cv2.contourArea(hull_list[i])
+            cont_area.append(area)
+        largest_contour_index = cont_area.index(max(cont_area))
+        second_largest_contour_index = 0
+        largest = 0.0
+        for h in range(len(hierarchy)):
+            if hierarchy[h][3] == largest_contour_index:
+                area = cv2.contourArea(hull_list[h])
+                if area > largest:
+                    largest = area
+                    second_largest_contour_index = h
+        return [largest_contour_index, second_largest_contour_index]
 
     def init_gui(self):
         self.root.geometry("800x800")
-        self.root.title("HUE/SATURATION/VALUE SLIDE")
+        self.root.title("COLOR FILTER")
 
     def slider_widget(self):
         frame = tk.Frame(self.root, width=400, height=200)
@@ -222,9 +276,14 @@ class ColorFilter:
         self.ax[3].set_title(f'Result', fontsize=self.fontsize)
         plt.show()
 
-        
+
+def parse_args():
+    parser=argparse.ArgumentParser(description="Select if you want to stream video.")
+    parser.add_argument("-v", "--video", default=False)
+    args=parser.parse_args()
+    return args
+
 if __name__ == "__main__":
-    filter = ColorFilter()
-    # start slider widget in new thread
-    #_thread.start_new_thread(filter.slider_widget, ())
+    inputs=parse_args()    
+    filter = ColorFilter(video=inputs.video)
     filter.run()
