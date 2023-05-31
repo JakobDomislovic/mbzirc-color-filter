@@ -17,8 +17,10 @@ class ColorFilter:
         self.images_path = './data/from_phone_original/'
         self.image_names = sorted(os.listdir(self.images_path))
         self.images = [os.path.join(self.images_path, img_name) for img_name in self.image_names]
-        # Gausian blurr kernel size
-        self.blurr = (55, 55)
+        # Gausian blurr kernel size ---> TODO: in config
+        self.blurr_kernel = (25, 25)
+        # dilation and erosion kernel size ---> TODO: in config
+        self.dilation_erosion_kernel = (25, 25)
         # initial hue boundaries
         self.hue_lower = 0
         self.hue_upper = 180
@@ -80,13 +82,17 @@ class ColorFilter:
                 self.filter()
 
     def filter(self):
-        # find mask based on boundaries value
-        lower_boundaries = np.array([self.hue_lower, self.saturation_lower, self.value_lower])
-        upper_boundaries = np.array([self.hue_upper, self.saturation_upper, self.value_upper])
+        # ---- PREPROCESSING -----
+        # set boundaries based on sliders
+        lower_boundaries,upper_boundaries = self.set_boundaries()
         # blurring image --> filter shape depends on image shape
-        blurred = cv2.GaussianBlur(self.img_hsv, self.blurr, 0)  # TODO: put in config
+        blurred = cv2.GaussianBlur(self.img_hsv, self.blurr_kernel, 0)
+        
+        # ---- FINDING MASK AND CONTOURS -----
         # extract only black color
         mask = cv2.inRange(blurred, lower_boundaries, upper_boundaries)
+        # dilation and erosion of mask
+        mask  = self.dilation_and_erosion(mask)
         result = cv2.bitwise_and(self.img, self.img, mask = mask)
         # change result to BGR so we can see it better
         result = cv2.cvtColor(result, cv2.COLOR_HSV2BGR)        
@@ -95,13 +101,21 @@ class ColorFilter:
         contours, hierarchy, hull_list = self.find_contours(mask, result)
         # find two biggest contours    
         if len(contours) > 0:
-            two_biggest_contours = self.select_two_biggest_contours(hull_list, hierarchy[0])
+            # find index of largest contour
+            largest_contour_index = self.largest_contour(hull_list)
             # draw contours
-            for contour in two_biggest_contours:
-                cv2.drawContours(result, hull_list, contour, (0, 255, 0), 5)
+            cv2.drawContours(result, hull_list, largest_contour_index, (0, 255, 0), 5)
+            # fit rectangle
+            x,y,w,h = self.fit_rectangle_to_contour(hull_list[largest_contour_index])
+            # draw rectangle
+            cv2.rectangle(result, (x,y), (x+w,y+h), (255,0,0), 5)
+            # find COA
+            result = cv2.circle(result, (x+w//2,y+h//2), radius=20, color=(250, 250, 0), thickness=-1)
 
         print(lower_boundaries)
         print(upper_boundaries)
+
+        # ---- PLOT ----
         # save mask and result to class instance variables
         resized_mask = cv2.resize(mask, (250,250), interpolation = cv2.INTER_AREA)
         resized_result = cv2.resize(result, (250,250), interpolation = cv2.INTER_AREA)
@@ -114,33 +128,39 @@ class ColorFilter:
         
         self.label_result.configure(image=self.result_tk)
         self.label_result.image = self.result_tk
+    
+    def set_boundaries(self):
+        # find mask based on boundaries value
+        lower_boundaries = np.array([self.hue_lower, self.saturation_lower, self.value_lower])
+        upper_boundaries = np.array([self.hue_upper, self.saturation_upper, self.value_upper])
+        
+        return lower_boundaries, upper_boundaries
+
+    def dilation_and_erosion(self, mask):
+        mask_dilate = cv2.dilate(mask, self.dilation_erosion_kernel, iterations=1)
+        mask_erosion = cv2.erode(mask_dilate, self.dilation_erosion_kernel, iterations=1)
+        return mask_erosion
         
     def find_contours(self, mask, result):
-        contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)  # RETR_EXTERNAL finds only external contours
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)  # RETR_CCOMP finds all contours
         hull_list = []
         for i in range(len(contours)):
             hull = cv2.convexHull(contours[i])
             hull_list.append(hull)
-            #cv2.drawContours(result, contours, i, (255, 0, 0), 5)    
-            #cv2.drawContours(result, hull_list, i, (0, 255, 0), 5)
         return contours, hierarchy, hull_list
 
-    def select_two_biggest_contours(self, hull_list, hierarchy):
+    def largest_contour(self, hull_list):
         # calculate area
         cont_area = []
         for i in range(len(hull_list)):
             area = cv2.contourArea(hull_list[i])
             cont_area.append(area)
         largest_contour_index = cont_area.index(max(cont_area))
-        second_largest_contour_index = 0
-        largest = 0.0
-        for h in range(len(hierarchy)):
-            if hierarchy[h][3] == largest_contour_index:
-                area = cv2.contourArea(hull_list[h])
-                if area > largest:
-                    largest = area
-                    second_largest_contour_index = h
-        return [largest_contour_index, second_largest_contour_index]
+        return largest_contour_index
+
+    def fit_rectangle_to_contour(self, contour):
+        (x,y,w,h) = cv2.boundingRect(contour)
+        return x,y,w,h
 
     def init_gui(self):
         self.root.geometry("800x800")
@@ -151,7 +171,7 @@ class ColorFilter:
         frame.pack()
         frame.place(anchor='center', x=400, y=100)
         # hue
-        slider = Slider(frame, width = 400, height = 60, min_val = 0, max_val = 180, init_lis = [0,180], show_value = True, addable=True, removable=True)
+        slider = Slider(frame, width = 400, height = 60, min_val = 0, max_val = 179, init_lis = [0,179], show_value = True, addable=True, removable=True)
         slider.pack()
         # saturation
         slider2 = Slider(frame, width = 400, height = 60, min_val = 0, max_val = 255, init_lis = [0, 255], show_value = True, addable=True, removable=True)
